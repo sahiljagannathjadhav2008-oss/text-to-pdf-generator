@@ -1,0 +1,814 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Text → Multi-Language PDF Generator</title>
+<style>
+  :root{
+    --theme-color:#4F46E5;
+    --bg:#0f1115;
+    --panel:#171a21;
+    --panel-2:#1e2229;
+    --border:#2a2f3a;
+    --text:#e8eaf0;
+    --text-dim:#9aa1af;
+    --radius:12px;
+    --green:#22c55e;
+    --red:#ef4444;
+    --yellow:#eab308;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{
+    margin:0;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans",sans-serif;
+    background:var(--bg);
+    color:var(--text);
+  }
+  .topbar{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:12px 22px;border-bottom:1px solid var(--border);
+    background:linear-gradient(180deg,#14161c,#0f1115);flex-wrap:wrap;gap:10px;
+  }
+  .brand{display:flex;align-items:center;gap:10px;}
+  .brand .dot{width:10px;height:10px;border-radius:50%;background:var(--theme-color);box-shadow:0 0 12px var(--theme-color);}
+  .brand h1{font-size:15px;margin:0;font-weight:600;letter-spacing:.2px;}
+  .brand span{font-size:11px;color:var(--text-dim);}
+
+  .status-bar{display:flex;align-items:center;gap:14px;position:relative;}
+  .status-item{
+    display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-dim);
+    cursor:pointer;padding:5px 10px;border-radius:8px;background:var(--panel-2);
+    border:1px solid var(--border);
+  }
+  .status-item:hover{border-color:#3a4152;}
+  .status-led{width:8px;height:8px;border-radius:50%;background:var(--yellow);flex:none;}
+  .status-led.green{background:var(--green);box-shadow:0 0 6px var(--green);}
+  .status-led.red{background:var(--red);box-shadow:0 0 6px var(--red);}
+  .status-led.yellow{background:var(--yellow);}
+  .refresh-btn{
+    background:none;border:1px solid var(--border);color:var(--text-dim);border-radius:8px;
+    padding:5px 9px;font-size:12px;cursor:pointer;
+  }
+  .refresh-btn:hover{color:var(--text);border-color:var(--theme-color);}
+
+  .status-popup{
+    position:absolute;top:38px;right:0;background:var(--panel);border:1px solid var(--border);
+    border-radius:10px;padding:12px 14px;font-size:12px;width:270px;z-index:20;
+    box-shadow:0 8px 24px rgba(0,0,0,.4);display:none;
+  }
+  .status-popup.open{display:block;}
+  .status-popup h4{margin:0 0 6px;font-size:11px;text-transform:uppercase;color:var(--text-dim);}
+  .status-popup .row{display:flex;justify-content:space-between;margin:3px 0;color:var(--text-dim);gap:8px;}
+  .status-popup .row b{color:var(--text);font-weight:500;text-align:right;}
+
+  .layout{
+    display:grid;grid-template-columns:1fr 1fr;height:calc(100vh - 61px);
+  }
+  @media (max-width:900px){ .layout{grid-template-columns:1fr;height:auto;} }
+
+  .pane{padding:16px;overflow-y:auto;}
+  .pane-left{border-right:1px solid var(--border);}
+  @media (max-width:900px){ .pane-left{border-right:none;border-bottom:1px solid var(--border);} }
+
+  .card{
+    background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);
+    padding:15px;margin-bottom:14px;
+  }
+  .card h3{margin:0 0 10px 0;font-size:11.5px;text-transform:uppercase;letter-spacing:.6px;color:var(--text-dim);font-weight:600;}
+
+  .ai-toggle-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:2px;}
+  .ai-toggle-row .label-group{display:flex;flex-direction:column;}
+  .ai-toggle-row .label-group span.small{font-size:11px;color:var(--text-dim);margin-top:2px;}
+  .switch{position:relative;width:42px;height:24px;flex:none;}
+  .switch input{opacity:0;width:0;height:0;}
+  .slider{position:absolute;cursor:pointer;inset:0;background:#3a4152;border-radius:24px;transition:.15s;}
+  .slider::before{content:"";position:absolute;width:18px;height:18px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:.15s;}
+  input:checked + .slider{background:var(--theme-color);}
+  input:checked + .slider::before{transform:translateX(18px);}
+
+  .fallback-banner{
+    background:#332b13;border:1px solid #6b5a1f;color:#f4d675;font-size:12px;
+    padding:8px 12px;border-radius:8px;margin-bottom:12px;display:none;
+  }
+  .fallback-banner.visible{display:block;}
+
+  textarea#markdownInput{
+    width:100%;min-height:300px;resize:vertical;
+    background:var(--panel-2);border:1px solid var(--border);border-radius:8px;
+    color:var(--text);padding:12px;font-size:13.5px;line-height:1.6;
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  textarea#markdownInput:focus{outline:none;border-color:var(--theme-color);}
+
+  .row{display:flex;gap:12px;align-items:center;flex-wrap:wrap;}
+  .field{flex:1;min-width:120px;}
+  .field label{display:block;font-size:11px;color:var(--text-dim);margin-bottom:5px;}
+  .field input[type="text"], .field select{
+    width:100%;background:var(--panel-2);border:1px solid var(--border);color:var(--text);
+    padding:8px 10px;border-radius:8px;font-size:13px;
+  }
+  input[type="color"]{
+    width:44px;height:36px;border:1px solid var(--border);border-radius:8px;background:none;cursor:pointer;padding:2px;
+  }
+  input[type="range"]{width:100%;}
+
+  .dropzone{
+    border:2px dashed var(--border);border-radius:10px;padding:18px 14px;
+    text-align:center;color:var(--text-dim);font-size:13px;cursor:pointer;
+    transition:.15s ease;background:var(--panel-2);
+  }
+  .dropzone.dragover{border-color:var(--theme-color);color:var(--text);background:#1a1e2e;}
+  .dropzone strong{color:var(--text);}
+
+  .thumbs{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px;}
+  .thumb{
+    width:104px;background:var(--panel-2);border:1px solid var(--border);border-radius:8px;
+    overflow:hidden;font-size:10px;
+  }
+  .thumb img{width:100%;height:64px;object-fit:cover;display:block;}
+  .thumb .meta{padding:6px;display:flex;flex-direction:column;gap:4px;align-items:center;}
+  .thumb button{
+    width:100%;font-size:10px;padding:4px 0;border-radius:5px;border:1px solid var(--border);
+    background:var(--panel);color:var(--text);cursor:pointer;
+  }
+  .thumb button:hover{border-color:var(--theme-color);color:var(--theme-color);}
+  .thumb .remove{color:#f87171;border-color:transparent;}
+
+  .btn-row{display:flex;gap:10px;}
+  .secondary-btn{
+    flex:1;padding:12px;border-radius:10px;cursor:pointer;font-size:13px;font-weight:600;
+    background:var(--panel-2);color:var(--text);border:1px solid var(--border);
+    display:flex;align-items:center;justify-content:center;gap:8px;
+  }
+  .secondary-btn:hover{border-color:var(--theme-color);color:var(--theme-color);}
+  .secondary-btn:disabled{opacity:.5;cursor:not-allowed;}
+
+  .generate-btn{
+    width:100%;padding:14px;border:none;border-radius:10px;cursor:pointer;
+    background:var(--theme-color);color:#fff;font-size:14.5px;font-weight:600;
+    display:flex;align-items:center;justify-content:center;gap:10px;
+    transition:filter .15s ease;
+  }
+  .generate-btn:hover{filter:brightness(1.08);}
+  .generate-btn:disabled{opacity:.6;cursor:not-allowed;}
+  .spinner{
+    width:16px;height:16px;border-radius:50%;border:2px solid rgba(255,255,255,.4);
+    border-top-color:#fff;animation:spin .7s linear infinite;display:none;
+  }
+  .generate-btn.loading .spinner, .secondary-btn.loading .spinner{display:inline-block;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+
+  #statusMsg{margin-top:10px;font-size:12.5px;min-height:16px;}
+  #statusMsg.error{color:#f87171;}
+  #statusMsg.success{color:#4ade80;}
+  #timingMsg{margin-top:4px;font-size:11px;color:var(--text-dim);}
+
+  .hint{font-size:11.5px;color:var(--text-dim);margin-top:8px;line-height:1.5;}
+  code.inline{background:var(--panel-2);padding:1px 5px;border-radius:4px;font-size:11px;}
+
+  .preview-mode-tabs{display:flex;gap:6px;}
+  .preview-mode-tabs button{
+    font-size:11px;padding:4px 10px;border-radius:7px;border:1px solid var(--border);
+    background:var(--panel-2);color:var(--text-dim);cursor:pointer;
+  }
+  .preview-mode-tabs button.active{border-color:var(--theme-color);color:var(--theme-color);background:#1a1e2e;}
+
+  .preview-wrap{
+    background:#fff;color:#1a1a1a;border-radius:var(--radius);min-height:100%;
+    padding:34px 38px;box-shadow:0 0 0 1px var(--border);
+  }
+  .preview-wrap h1{
+    color:var(--theme-color);font-size:24px;margin:18px 0 8px;padding-bottom:6px;
+    border-bottom:3px solid var(--theme-color);
+  }
+  .preview-wrap h2{
+    color:var(--theme-color);font-size:18px;margin:16px 0 6px;padding-bottom:5px;
+    border-bottom:2px solid var(--theme-color);
+  }
+  .preview-wrap h3{font-size:14.5px;margin:14px 0 4px;color:#333;}
+  .preview-wrap p{font-size:13.5px;line-height:1.75;margin:6px 0;text-align:justify;}
+  .preview-wrap ul,.preview-wrap ol{font-size:13.5px;line-height:1.7;margin:8px 0;padding-left:22px;}
+  .preview-wrap li::marker{color:var(--theme-color);}
+  .preview-wrap img{max-width:100%;border-radius:6px;margin:10px 0;display:block;}
+  .preview-wrap hr{border:none;border-top:1px solid #d8dce3;margin:16px 0;}
+  .preview-wrap blockquote{
+    border-left:3px solid var(--theme-color);margin:10px 0;padding:4px 14px;
+    color:#444;font-style:italic;background:#f7f7fb;
+  }
+  .preview-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px;}
+  .preview-header span.label{font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px;}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">
+    <div class="dot"></div>
+    <div>
+      <h1>AI Text → Multi-Language PDF Generator</h1>
+      <span>English · हिंदी · मराठी &nbsp;|&nbsp; Built Different</span>
+    </div>
+  </div>
+
+  <div class="status-bar">
+    <div class="status-item" id="backendStatusItem">
+      <span class="status-led yellow" id="backendLed"></span>
+      <span id="backendLabel">Backend: checking…</span>
+    </div>
+    <div class="status-item" id="geminiStatusItem">
+      <span class="status-led yellow" id="geminiLed"></span>
+      <span id="geminiLabel">Gemini: checking…</span>
+    </div>
+    <button class="refresh-btn" id="refreshStatusBtn" title="Recheck now">⟳</button>
+    <div class="status-popup" id="statusPopup">
+      <h4>Backend</h4>
+      <div class="row"><span>Status</span><b id="popupBackendStatus">—</b></div>
+      <div class="row"><span>Fonts ready</span><b id="popupFonts">—</b></div>
+      <h4 style="margin-top:10px;">Gemini API</h4>
+      <div class="row"><span>Status</span><b id="popupGeminiStatus">—</b></div>
+      <div class="row"><span>Model</span><b id="popupGeminiModel">—</b></div>
+      <div class="row"><span>Response time</span><b id="popupGeminiTime">—</b></div>
+      <div class="row"><span>Reason</span><b id="popupGeminiReason">—</b></div>
+      <div class="row"><span>Last checked</span><b id="popupChecked">—</b></div>
+    </div>
+  </div>
+</div>
+
+<div class="layout">
+
+  <!-- LEFT PANE -->
+  <div class="pane pane-left">
+
+    <div class="card">
+      <div class="ai-toggle-row">
+        <div class="label-group">
+          <strong style="font-size:13px;">Use AI structuring (Gemini)</strong>
+          <span class="small">Classifies structure only — verified to never alter your text</span>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="useAiToggle">
+          <span class="slider"></span>
+        </label>
+      </div>
+      <div class="fallback-banner" id="fallbackBanner">
+        AI structuring unavailable (or could not be verified) for part of this document — basic formatting was used instead. Your text content is unaffected.
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Document Settings</h3>
+      <div class="row">
+        <div class="field">
+          <label for="docTitle">Document Title (optional override)</label>
+          <input type="text" id="docTitle" placeholder="Leave blank to auto-detect">
+        </div>
+        <div class="field" style="flex:0 0 auto;">
+          <label for="themeColor">Theme Color</label>
+          <input type="color" id="themeColor" value="#4F46E5">
+        </div>
+      </div>
+      <div class="row" style="margin-top:12px;">
+        <div class="field">
+          <label for="pageSize">Page Size</label>
+          <select id="pageSize">
+            <option value="A4" selected>A4</option>
+            <option value="Letter">Letter</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="orientation">Orientation</label>
+          <select id="orientation">
+            <option value="portrait" selected>Portrait</option>
+            <option value="landscape">Landscape</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="fontSize">Font Size (pt): <span id="fontSizeVal">10.5</span></label>
+          <input type="range" id="fontSize" min="8" max="16" step="0.5" value="10.5">
+        </div>
+      </div>
+      <div class="hint">Changing any setting here never triggers a new AI structuring call — only re-renders the already-structured document.</div>
+    </div>
+
+    <div class="card">
+      <h3>AI / Plain Text Input</h3>
+      <textarea id="markdownInput" placeholder="# Heading&#10;## Subheading&#10;- Bullet point one&#10;- Bullet point two&#10;&#10;Plain paragraph text — Markdown is optional. Plain text without any # symbols also works, in English, हिंदी, or मराठी.&#10;&#10;---&#10;&#10;[[image:1]]"></textarea>
+      <div class="hint">
+        Optional Markdown: <code class="inline"># H1</code>, <code class="inline">## H2</code>,
+        <code class="inline">### H3</code>, <code class="inline">- bullets</code>,
+        <code class="inline">1. numbered</code>, <code class="inline">&gt; quote</code>,
+        <code class="inline">**bold**</code>, <code class="inline">*italic*</code>,
+        <code class="inline">---</code> divider. Plain text without any of this also works.
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Images</h3>
+      <div class="dropzone" id="dropzone">
+        <strong>Drag & drop images here</strong><br>or click to browse
+        <input type="file" id="fileInput" accept="image/*" multiple style="display:none;">
+      </div>
+      <div class="thumbs" id="thumbs"></div>
+      <div class="hint">Upload an image, then either place your cursor in the text box and click "Insert at Cursor", or use "Insert at End" if that's easier. Image placement never involves Gemini.</div>
+    </div>
+
+    <div class="card">
+      <div class="btn-row" style="margin-bottom:10px;">
+        <button class="secondary-btn" id="analyzeBtn">
+          <span class="spinner"></span>
+          <span id="analyzeLabel">Analyze Structure</span>
+        </button>
+      </div>
+      <button class="generate-btn" id="generateBtn">
+        <span class="spinner"></span>
+        <span id="generateLabel">Generate PDF</span>
+      </button>
+      <div id="statusMsg"></div>
+      <div id="timingMsg"></div>
+    </div>
+
+  </div>
+
+  <!-- RIGHT PANE: STRUCTURAL PREVIEW -->
+  <div class="pane pane-right">
+    <div class="preview-header">
+      <span class="label" id="previewModeLabel">Structural Preview (typed, approximate)</span>
+      <div class="preview-mode-tabs">
+        <button id="tabTyped" class="active">Typed (instant)</button>
+        <button id="tabAnalyzed">Analyzed (backend)</button>
+      </div>
+    </div>
+    <div class="preview-wrap" id="previewOutput"></div>
+  </div>
+
+</div>
+
+<script>
+(function(){
+  const els = {
+    markdownInput: document.getElementById('markdownInput'),
+    previewOutput: document.getElementById('previewOutput'),
+    previewModeLabel: document.getElementById('previewModeLabel'),
+    tabTyped: document.getElementById('tabTyped'),
+    tabAnalyzed: document.getElementById('tabAnalyzed'),
+    themeColor: document.getElementById('themeColor'),
+    docTitle: document.getElementById('docTitle'),
+    pageSize: document.getElementById('pageSize'),
+    orientation: document.getElementById('orientation'),
+    fontSize: document.getElementById('fontSize'),
+    fontSizeVal: document.getElementById('fontSizeVal'),
+    dropzone: document.getElementById('dropzone'),
+    fileInput: document.getElementById('fileInput'),
+    thumbs: document.getElementById('thumbs'),
+    generateBtn: document.getElementById('generateBtn'),
+    generateLabel: document.getElementById('generateLabel'),
+    analyzeBtn: document.getElementById('analyzeBtn'),
+    analyzeLabel: document.getElementById('analyzeLabel'),
+    statusMsg: document.getElementById('statusMsg'),
+    timingMsg: document.getElementById('timingMsg'),
+    useAiToggle: document.getElementById('useAiToggle'),
+    fallbackBanner: document.getElementById('fallbackBanner'),
+    backendLed: document.getElementById('backendLed'),
+    backendLabel: document.getElementById('backendLabel'),
+    geminiLed: document.getElementById('geminiLed'),
+    geminiLabel: document.getElementById('geminiLabel'),
+    refreshStatusBtn: document.getElementById('refreshStatusBtn'),
+    statusPopup: document.getElementById('statusPopup'),
+    backendStatusItem: document.getElementById('backendStatusItem'),
+    geminiStatusItem: document.getElementById('geminiStatusItem'),
+  };
+
+  // ---------------------------------------------------------------------
+  // Backend URL: static frontend (GitHub Pages), separate Python backend.
+  // Change via browser console:
+  //   localStorage.setItem('pdfgen_backend_url', 'https://your-backend.example.com');
+  //   location.reload();
+  // ---------------------------------------------------------------------
+  const BACKEND_URL = (localStorage.getItem('pdfgen_backend_url') || 'http://localhost:5000').replace(/\/+$/, '');
+
+  let images = [];
+  let nextImageIndex = 1;
+  let previewMode = 'typed'; // 'typed' | 'analyzed'
+  let lastAnalyzedDocument = null;
+
+  function applyThemeColor(hex){ document.documentElement.style.setProperty('--theme-color', hex); }
+  els.themeColor.addEventListener('input', () => applyThemeColor(els.themeColor.value));
+  applyThemeColor(els.themeColor.value);
+
+  els.fontSize.addEventListener('input', () => { els.fontSizeVal.textContent = els.fontSize.value; });
+
+  // =======================================================================
+  // Extract structured error message from either the new {error:{code,
+  // message}} shape or a plain string, defensively.
+  // =======================================================================
+  function extractErrorMessage(errJson, fallback){
+    if (!errJson) return fallback;
+    if (errJson.error && typeof errJson.error === 'object' && errJson.error.message) {
+      return errJson.error.message;
+    }
+    if (typeof errJson.error === 'string') return errJson.error;
+    return fallback;
+  }
+
+  // =======================================================================
+  // Rendering helpers shared by both preview modes
+  // =======================================================================
+  function escapeHtml(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  function inlineMarkup(s){
+    let out = escapeHtml(s);
+    out = out.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    out = out.replace(/__(.+?)__/g, '<strong>$1</strong>');
+    out = out.replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, '<em>$1</em>');
+    out = out.replace(/(?<!_)_(?!_)(.+?)(?<!_)_(?!_)/g, '<em>$1</em>');
+    return out;
+  }
+  function imageMarkup(idx){
+    const img = images.find(i => String(i.index) === String(idx));
+    return img ? `<img src="${img.data}" alt="uploaded image">` : '';
+  }
+
+  // ---- Typed (client-side, instant, deterministic-parser-equivalent) preview ----
+  function looksLikeHeading(line, prevBlank){
+    const stripped = line.trim();
+    if (!stripped || stripped.length > 80) return false;
+    if (stripped.split(/\s+/).length > 12) return false;
+    if (/[.,;:]$/.test(stripped)) return false;
+    return prevBlank;
+  }
+
+  function parseTypedToHtml(raw){
+    const lines = raw.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+    let html = [];
+    let bulletBuf = [], numberedBuf = [];
+    let titleAssigned = false;
+    let prevBlank = true;
+
+    function flushBullets(){ if (bulletBuf.length){ html.push('<ul>' + bulletBuf.map(t => `<li>${inlineMarkup(t)}</li>`).join('') + '</ul>'); bulletBuf = []; } }
+    function flushNumbered(){ if (numberedBuf.length){ html.push('<ol>' + numberedBuf.map(t => `<li>${inlineMarkup(t)}</li>`).join('') + '</ol>'); numberedBuf = []; } }
+    function flushAll(){ flushBullets(); flushNumbered(); }
+
+    for (let i = 0; i < lines.length; i++){
+      const line = lines[i].trimEnd();
+      const stripped = line.trim();
+
+      if (!stripped){ flushAll(); prevBlank = true; continue; }
+
+      const imgMatch = stripped.match(/^\[\[image:([A-Za-z0-9_-]+)\]\]$/);
+      if (imgMatch){ flushAll(); const m = imageMarkup(imgMatch[1]); if (m) html.push(`<figure>${m}</figure>`); prevBlank = false; continue; }
+
+      if (stripped === '---' || stripped === '***' || stripped === '___'){ flushAll(); html.push('<hr>'); prevBlank = false; continue; }
+
+      const headingMatch = stripped.match(/^(#{1,3})\s+(.*)/);
+      if (headingMatch){
+        flushAll();
+        const level = headingMatch[1].length;
+        const text = headingMatch[2].trim();
+        if (!titleAssigned && level === 1){ html.unshift(`<h1>${inlineMarkup(text)}</h1>`); titleAssigned = true; }
+        else html.push(`<h${level}>${inlineMarkup(text)}</h${level}>`);
+        prevBlank = false; continue;
+      }
+
+      const bulletMatch = stripped.match(/^[-*]\s+(.*)/);
+      if (bulletMatch){ flushNumbered(); bulletBuf.push(bulletMatch[1].trim()); prevBlank = false; continue; }
+
+      const numberedMatch = stripped.match(/^\d+[.)]\s+(.*)/);
+      if (numberedMatch){ flushBullets(); numberedBuf.push(numberedMatch[1].trim()); prevBlank = false; continue; }
+
+      const quoteMatch = stripped.match(/^>\s?(.*)/);
+      if (quoteMatch){ flushAll(); html.push(`<blockquote>${inlineMarkup(quoteMatch[1].trim())}</blockquote>`); prevBlank = false; continue; }
+
+      if (!titleAssigned && i === 0){ html.unshift(`<h1>${inlineMarkup(stripped)}</h1>`); titleAssigned = true; prevBlank = false; continue; }
+
+      if (looksLikeHeading(stripped, prevBlank)){ flushAll(); html.push(`<h2>${inlineMarkup(stripped)}</h2>`); prevBlank = false; continue; }
+
+      flushAll();
+      html.push(`<p>${inlineMarkup(stripped)}</p>`);
+      prevBlank = false;
+    }
+    flushAll();
+    return html.join('\n');
+  }
+
+  // ---- Analyzed (backend Document Model -- authoritative) preview ----
+  function renderBlockToHtml(block){
+    switch (block.type){
+      case 'heading': return `<h${block.level}>${inlineMarkup(block.text)}</h${block.level}>`;
+      case 'paragraph': return `<p>${inlineMarkup(block.text)}</p>`;
+      case 'quote': return `<blockquote>${inlineMarkup(block.text)}</blockquote>`;
+      case 'bullet_list': return '<ul>' + block.items.map(i => `<li>${inlineMarkup(i)}</li>`).join('') + '</ul>';
+      case 'numbered_list': return '<ol>' + block.items.map(i => `<li>${inlineMarkup(i)}</li>`).join('') + '</ol>';
+      case 'divider': return '<hr>';
+      case 'image': { const m = imageMarkup(block.image_index); return m ? `<figure>${m}</figure>` : ''; }
+      default: return '';
+    }
+  }
+
+  function renderDocumentToHtml(doc){
+    if (!doc) return '<p style="color:#999;">No structure available yet.</p>';
+    const parts = [];
+    if (doc.title) parts.push(`<h1>${inlineMarkup(doc.title)}</h1>`);
+    doc.blocks.forEach(b => { const h = renderBlockToHtml(b); if (h) parts.push(h); });
+    return parts.join('\n') || '<p>No content.</p>';
+  }
+
+  function renderPreview(){
+    const raw = els.markdownInput.value;
+    if (previewMode === 'analyzed'){
+      els.previewOutput.innerHTML = lastAnalyzedDocument
+        ? renderDocumentToHtml(lastAnalyzedDocument)
+        : '<p style="color:#999;">Click "Analyze Structure" to see the backend\'s actual structure.</p>';
+      return;
+    }
+    els.previewOutput.innerHTML = raw.trim()
+      ? parseTypedToHtml(raw)
+      : '<p style="color:#999;">Start typing to see a structural preview…</p>';
+  }
+
+  let debounceTimer;
+  els.markdownInput.addEventListener('input', () => {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => { if (previewMode === 'typed') renderPreview(); }, 200);
+  });
+  renderPreview();
+
+  els.tabTyped.addEventListener('click', () => {
+    previewMode = 'typed';
+    els.tabTyped.classList.add('active');
+    els.tabAnalyzed.classList.remove('active');
+    els.previewModeLabel.textContent = 'Structural Preview (typed, approximate)';
+    renderPreview();
+  });
+  els.tabAnalyzed.addEventListener('click', () => {
+    previewMode = 'analyzed';
+    els.tabAnalyzed.classList.add('active');
+    els.tabTyped.classList.remove('active');
+    els.previewModeLabel.textContent = 'Structural Preview (backend-analyzed, authoritative)';
+    renderPreview();
+  });
+
+  // ---- Analyze Structure: calls the SAME pipeline used for PDF generation ----
+  els.analyzeBtn.addEventListener('click', async () => {
+    const text = els.markdownInput.value;
+    if (!text.trim()){ showStatus('Please enter some text before analyzing.', 'error'); return; }
+
+    setAnalyzing(true);
+    showStatus('Analyzing document structure…', '');
+
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/structure-preview`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, useAI: els.useAiToggle.checked })
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok){
+        throw new Error(extractErrorMessage(json, `Server returned ${res.status}`));
+      }
+      lastAnalyzedDocument = json.document;
+      if (json.document && json.document.source === 'fallback' && els.useAiToggle.checked){
+        els.fallbackBanner.classList.add('visible');
+      } else {
+        els.fallbackBanner.classList.remove('visible');
+      }
+      els.tabAnalyzed.click();
+      showStatus('Structure analyzed. Switched to "Analyzed" preview.', 'success');
+      if (json.timing){
+        els.timingMsg.textContent = `Analysis: ${json.timing.analysis_ms}ms`;
+      }
+    } catch (err) {
+      showStatus(`Failed to analyze structure: ${err.message}`, 'error');
+    } finally {
+      setAnalyzing(false);
+    }
+  });
+
+  function setAnalyzing(isLoading){
+    els.analyzeBtn.disabled = isLoading;
+    els.analyzeBtn.classList.toggle('loading', isLoading);
+    els.analyzeLabel.textContent = isLoading ? 'Analyzing…' : 'Analyze Structure';
+  }
+
+  // ---- Image upload (drag & drop + click) ----
+  els.dropzone.addEventListener('click', () => els.fileInput.click());
+  els.dropzone.addEventListener('dragover', (e) => { e.preventDefault(); els.dropzone.classList.add('dragover'); });
+  els.dropzone.addEventListener('dragleave', () => els.dropzone.classList.remove('dragover'));
+  els.dropzone.addEventListener('drop', (e) => { e.preventDefault(); els.dropzone.classList.remove('dragover'); handleFiles(e.dataTransfer.files); });
+  els.fileInput.addEventListener('change', (e) => handleFiles(e.target.files));
+
+  function handleFiles(fileList){
+    Array.from(fileList).forEach(file => {
+      if (!file.type.startsWith('image/')) { showStatus(`"${file.name}" is not an image and was skipped.`, 'error'); return; }
+      if (file.size > 12 * 1024 * 1024) { showStatus(`"${file.name}" exceeds 12MB and was skipped.`, 'error'); return; }
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        images.push({ index: nextImageIndex++, data: e.target.result, name: file.name });
+        renderThumbs();
+      };
+      reader.onerror = () => showStatus(`Could not read "${file.name}".`, 'error');
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function renderThumbs(){
+    els.thumbs.innerHTML = '';
+    images.forEach(img => {
+      const div = document.createElement('div');
+      div.className = 'thumb';
+      div.innerHTML = `
+        <img src="${img.data}" alt="${img.name}">
+        <div class="meta">
+          <button data-action="insert-cursor" data-index="${img.index}">Insert at Cursor</button>
+          <button data-action="insert-end" data-index="${img.index}">Insert at End</button>
+          <button data-action="remove" data-index="${img.index}" class="remove">Remove</button>
+        </div>`;
+      els.thumbs.appendChild(div);
+    });
+  }
+
+  els.thumbs.addEventListener('click', (e) => {
+    const btn = e.target.closest('button');
+    if (!btn) return;
+    const idx = btn.getAttribute('data-index');
+    const action = btn.getAttribute('data-action');
+    if (action === 'insert-cursor'){
+      insertAtCursor(els.markdownInput, `\n[[image:${idx}]]\n`);
+      if (previewMode === 'typed') renderPreview();
+    } else if (action === 'insert-end'){
+      const sep = els.markdownInput.value.endsWith('\n') ? '' : '\n';
+      els.markdownInput.value += `${sep}\n[[image:${idx}]]\n`;
+      if (previewMode === 'typed') renderPreview();
+    } else if (action === 'remove'){
+      images = images.filter(i => String(i.index) !== idx);
+      renderThumbs();
+      if (previewMode === 'typed') renderPreview();
+    }
+  });
+
+  function insertAtCursor(textarea, text){
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const before = textarea.value.substring(0, start);
+    const after = textarea.value.substring(end);
+    textarea.value = before + text + after;
+    const newPos = start + text.length;
+    textarea.focus();
+    textarea.setSelectionRange(newPos, newPos);
+  }
+
+  function showStatus(msg, type){
+    els.statusMsg.textContent = msg;
+    els.statusMsg.className = type || '';
+  }
+
+  // ---- Generate PDF ----
+  els.generateBtn.addEventListener('click', async () => {
+    const text = els.markdownInput.value;
+    if (!text.trim()){ showStatus('Please enter some text before generating a PDF.', 'error'); return; }
+
+    const payload = {
+      text: text,
+      title: els.docTitle.value.trim() || null,
+      themeColor: els.themeColor.value,
+      fontSizePt: parseFloat(els.fontSize.value),
+      pageSize: els.pageSize.value,
+      orientation: els.orientation.value,
+      useAI: els.useAiToggle.checked,
+      images: images.map(i => ({ index: i.index, data: i.data }))
+    };
+
+    setLoading(true);
+    showStatus('Generating your PDF… this may take a moment for large documents.', '');
+    els.timingMsg.textContent = '';
+
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/generate-pdf`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (!res.ok){
+        const errJson = await res.json().catch(() => null);
+        throw new Error(extractErrorMessage(errJson, `Server returned ${res.status}`));
+      }
+
+      const method = res.headers.get('X-Structuring-Method');
+      const totalMs = res.headers.get('X-Total-Ms');
+      const analysisMs = res.headers.get('X-Analysis-Ms');
+      const renderMs = res.headers.get('X-Render-Ms');
+
+      if (method === 'fallback' && els.useAiToggle.checked){
+        els.fallbackBanner.classList.add('visible');
+      } else if (method !== 'mixed') {
+        els.fallbackBanner.classList.remove('visible');
+      }
+
+      if (totalMs){
+        els.timingMsg.textContent = `AI analysis: ${analysisMs}ms · Rendering: ${renderMs}ms · Total: ${totalMs}ms · Method: ${method}`;
+      }
+
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${(payload.title || 'document').replace(/[^A-Za-z0-9_\-]+/g, '_') || 'document'}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+
+      showStatus('PDF generated and downloaded successfully.', 'success');
+    } catch (err) {
+      showStatus(`Failed to generate PDF: ${err.message}`, 'error');
+    } finally {
+      setLoading(false);
+    }
+  });
+
+  function setLoading(isLoading){
+    els.generateBtn.disabled = isLoading;
+    els.generateBtn.classList.toggle('loading', isLoading);
+    els.generateLabel.textContent = isLoading ? 'Generating…' : 'Generate PDF';
+  }
+
+  // =======================================================================
+  // Backend / Gemini status monitoring
+  // =======================================================================
+  function setLed(el, state){
+    el.className = 'status-led ' + (state === 'ok' ? 'green' : state === 'bad' ? 'red' : 'yellow');
+  }
+
+  async function checkStatus(force){
+    setLed(els.backendLed, 'checking');
+    setLed(els.geminiLed, 'checking');
+    els.backendLabel.textContent = 'Backend: checking…';
+    els.geminiLabel.textContent = 'Gemini: checking…';
+
+    try {
+      const url = `${BACKEND_URL}/api/status` + (force ? '?force=true' : '');
+      const res = await fetch(url, { method: 'GET' });
+      if (!res.ok) throw new Error('status endpoint error');
+      const data = await res.json();
+
+      setLed(els.backendLed, 'ok');
+      els.backendLabel.textContent = 'Backend: Online';
+
+      const gStatus = data.gemini.status;
+      if (gStatus === 'connected'){
+        setLed(els.geminiLed, 'ok');
+        els.geminiLabel.textContent = 'Gemini: Connected';
+      } else if (gStatus === 'not_configured'){
+        setLed(els.geminiLed, 'bad');
+        els.geminiLabel.textContent = 'Gemini: Not Configured';
+      } else {
+        setLed(els.geminiLed, 'bad');
+        els.geminiLabel.textContent = 'Gemini: Error';
+      }
+
+      updatePopup(data);
+    } catch (e) {
+      setLed(els.backendLed, 'bad');
+      els.backendLabel.textContent = 'Backend: Offline';
+      setLed(els.geminiLed, 'bad');
+      els.geminiLabel.textContent = 'Gemini: Unknown';
+      updatePopup(null);
+    }
+  }
+
+  function updatePopup(data){
+    if (!data){
+      document.getElementById('popupBackendStatus').textContent = 'Offline';
+      document.getElementById('popupFonts').textContent = '—';
+      document.getElementById('popupGeminiStatus').textContent = '—';
+      document.getElementById('popupGeminiModel').textContent = '—';
+      document.getElementById('popupGeminiTime').textContent = '—';
+      document.getElementById('popupGeminiReason').textContent = 'Backend unreachable';
+      document.getElementById('popupChecked').textContent = new Date().toLocaleTimeString();
+      return;
+    }
+    document.getElementById('popupBackendStatus').textContent = data.backend.status;
+    document.getElementById('popupFonts').textContent = data.backend.fonts_ready ? 'Yes' : 'No';
+    document.getElementById('popupGeminiStatus').textContent = data.gemini.status;
+    document.getElementById('popupGeminiModel').textContent = data.gemini.model || '—';
+    document.getElementById('popupGeminiTime').textContent = data.gemini.response_time_ms != null ? `${data.gemini.response_time_ms} ms` : '—';
+    document.getElementById('popupGeminiReason').textContent = data.gemini.reason || 'None';
+    document.getElementById('popupChecked').textContent = new Date().toLocaleTimeString();
+  }
+
+  function togglePopup(){ els.statusPopup.classList.toggle('open'); }
+  els.backendStatusItem.addEventListener('click', togglePopup);
+  els.geminiStatusItem.addEventListener('click', togglePopup);
+  document.addEventListener('click', (e) => { if (!e.target.closest('.status-bar')) els.statusPopup.classList.remove('open'); });
+
+  els.refreshStatusBtn.addEventListener('click', () => checkStatus(true));
+
+  checkStatus(false);
+  setInterval(() => checkStatus(false), 30000);
+
+})();
+</script>
+
+</body>
+</html>
